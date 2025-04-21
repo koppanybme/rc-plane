@@ -1,11 +1,32 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include <EEPROM.h>
+#include <LiquidCrystal.h>
 const uint64_t pipeOut = 000322;
 const uint64_t pipeIn = 000321;
-RF24 radio(9, 10);
+#define RS 2
+#define EN 3
+#define D4 4
+#define D5 5
+#define D6 6
+#define D7 7
+#define TRIM_BUTTON 8
+#define TRIM 0
+#define TRANSMIT 1
+#define CENTER 2
+uint8_t state;
 
-struct Signal {
+RF24 radio(9, 10);
+LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
+
+int throttleOffset = 0;
+int pitchOffset = 0;
+int rollOffset = 0;
+int yawOffset = 0;
+
+
+struct Signal{
   byte throttle;
   byte pitch;
   byte roll;
@@ -16,15 +37,14 @@ struct Signal {
   byte aux4;
 };
 
-struct Telemetry {
+struct Telemetry{
   uint16_t id;
   uint16_t bat;
 };
 
 Signal data;
 Telemetry telemetry;
-void ResetData() 
-{
+void ResetData(){
   data.throttle = 0;
   data.pitch = 127;
   data.roll = 127;
@@ -35,32 +55,34 @@ void ResetData()
   data.aux4 = 0;
 }
 
-uint16_t ToMilliVolts(uint16_t adcValue) {
+uint16_t ToMilliVolts(uint16_t adcValue){
   return (adcValue * 5000UL) >> 10;
 }
 
-uint16_t recieved;
+uint16_t received = 0;
+uint16_t sent = 0;
 unsigned long start;
-uint16_t firstPacket;
-void setup()
-{
+uint16_t firstPacket = 0;
+void setup(){
   Serial.begin(115200);
-  while(!Serial){}
+  Serial.println("Hello");
   radio.begin();
   radio.openWritingPipe(pipeOut);
   radio.openReadingPipe(1, pipeIn);
-  radio.setChannel(109);
+  radio.setChannel(76);
   radio.enableAckPayload();
   radio.enableDynamicPayloads();
   radio.setDataRate(RF24_250KBPS);
-  radio.setPALevel(RF24_PA_HIGH);
+  radio.setPALevel(RF24_PA_MAX);
   radio.stopListening();
   ResetData();
-  recieved = 0;
   start = millis();
-}                                      
-int Border_Map(int val, int lower, int middle, int upper, bool reverse)
-{
+  lcd.begin(16, 2);
+  lcd.print("Hello");
+  state = TRANSMIT;
+}
+
+int Border_Map(int val, int lower, int middle, int upper, bool reverse){
   val = constrain(val, lower, upper);
   if ( val < middle ){
     val = map(val, lower, middle, 0, 128);
@@ -70,26 +92,83 @@ int Border_Map(int val, int lower, int middle, int upper, bool reverse)
   return ( reverse ? 255 - val : val );
 }
 
-  void loop()
-{                                     
-  data.roll = Border_Map( analogRead(A3), 0, 512, 1023, true );
-  data.pitch = Border_Map( analogRead(A2), 0, 512, 1023, true );      
-  data.throttle = Border_Map( analogRead(A1),570, 800, 1023, false );
-  data.yaw = Border_Map( analogRead(A0), 0, 512, 1023, true );
-  data.aux1 = Border_Map( analogRead(A4), 0, 512, 1023, true );
-  data.aux2 = Border_Map( analogRead(A5), 0, 512, 1023, true );
-  data.aux3 = digitalRead(7);
-  data.aux4 = digitalRead(8);
+void loop(){                          
+  switch(state){
+    case TRIM:
+    {
+      // Enter trimming by pressing button
+      if(digitalRead(TRIM_BUTTON)){
+        // Make sure button stopped bouncing
+        delay(50);
+        if(digitalRead(TRIM_BUTTON)){
+          state = TRANSMIT;
+          lcd.print("Transmitting");
+          break;
+        }     
+      }
 
-  radio.write(&data, sizeof(Signal));
-  
-  if(radio.available()){
-    radio.read(&telemetry, sizeof(telemetry));
-    recieved++;
-    if(millis() - start >= 1000){
-      Serial.println(recieved);      
-      recieved = 0;
-      start = millis();
+      break;
+    }      
+    case TRANSMIT:
+    {
+      // Enter trimming by pressing button
+      if(digitalRead(TRIM_BUTTON)){
+        // Make sure button stopped bouncing
+        delay(50);
+        if(digitalRead(TRIM_BUTTON)){
+           state = TRIM;
+           lcd.print("Trimming");
+           break;
+        }
+      }
+      // Get data from controls
+      data.roll = Border_Map( analogRead(A3) - rollOffset, 0, 512, 1023, true );
+      data.pitch = Border_Map( analogRead(A2) - pitchOffset, 0, 512, 1023, true );      
+      data.throttle = Border_Map( analogRead(A1) - throttleOffset,570, 800, 1023, false );
+      data.yaw = Border_Map( analogRead(A0) - yawOffset, 0, 512, 1023, true );
+      data.aux1 = Border_Map( analogRead(A4), 0, 512, 1023, true );
+      data.aux2 = Border_Map( analogRead(A5), 0, 512, 1023, true );
+      data.aux3 = 0;
+      data.aux4 = 0;
+
+      // Send data and check for ACK payload
+      bool sendWithAck = (millis() % 1000 < 1000); // Request ACK 100% of the time
+      bool txSuccess = radio.write(&data, sizeof(Signal), !sendWithAck);
+      sent++;
+
+      if (sendWithAck && txSuccess) {
+        // Only check for ACK payload if we requested it and transmission succeeded
+        while (radio.available()) {
+          radio.read(&telemetry, sizeof(telemetry));
+          received++;                             
+        }
+      }
+      if(millis() - start >= 1000){
+        Serial.print(sent);
+        Serial.print(" ");
+        Serial.print(received);
+        Serial.print("/");
+        Serial.println(telemetry.id - firstPacket);
+        received = 0;
+        sent = 0;
+        firstPacket = telemetry.id;
+        start = millis();
+      }
+      break;
+    }
+    case CENTER:
+    {
+      lcd.clear();
+      lcd.print("Center the joysticks");
+      unsigned long centerStart = millis();
+      if(millis() - centerStart > 1000){
+        throttleOffset = analogRead(A1);
+        pitchOffset = analogRead(A2);
+        rollOffset = analogRead(A3);
+        yawOffset = analogRead(A0);
+        state = TRANSMIT;
+      }
+      break;
     }
   }
 }
