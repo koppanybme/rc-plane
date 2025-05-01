@@ -56,29 +56,31 @@ void ResetData(){
 }
 
 uint16_t ToMilliVolts(uint16_t adcValue){
+
   return (adcValue * 5000UL) >> 10;
 }
 
-uint16_t received = 0;
-uint16_t sent = 0;
-unsigned long start;
-uint16_t firstPacket = 0;
+uint16_t recieved = 0;
+unsigned long start = millis();
+uint16_t firstPacket;
 void setup(){
-  Serial.begin(115200);
-  Serial.println("Hello");
+  Serial.begin(9600);
+  while(!Serial){}
   radio.begin();
   radio.openWritingPipe(pipeOut);
   radio.openReadingPipe(1, pipeIn);
-  radio.setChannel(76);
+  radio.setChannel(109);
   radio.enableAckPayload();
   radio.enableDynamicPayloads();
   radio.setDataRate(RF24_250KBPS);
   radio.setPALevel(RF24_PA_MAX);
   radio.stopListening();
   ResetData();
+  recieved = 0;
   start = millis();
   lcd.begin(16, 2);
-  lcd.print("Hello");
+  lcd.print("hello");
+  Serial.println("hello");
   state = TRANSMIT;
 }
 
@@ -121,7 +123,6 @@ void loop(){
            break;
         }
       }
-      // Get data from controls
       data.roll = Border_Map( analogRead(A3) - rollOffset, 0, 512, 1023, true );
       data.pitch = Border_Map( analogRead(A2) - pitchOffset, 0, 512, 1023, true );      
       data.throttle = Border_Map( analogRead(A1) - throttleOffset,570, 800, 1023, false );
@@ -131,27 +132,20 @@ void loop(){
       data.aux3 = 0;
       data.aux4 = 0;
 
-      // Send data and check for ACK payload
-      bool sendWithAck = (millis() % 1000 < 1000); // Request ACK 100% of the time
-      bool txSuccess = radio.write(&data, sizeof(Signal), !sendWithAck);
-      sent++;
-
-      if (sendWithAck && txSuccess) {
-        // Only check for ACK payload if we requested it and transmission succeeded
-        while (radio.available()) {
-          radio.read(&telemetry, sizeof(telemetry));
-          received++;                             
-        }
+      radio.write(&data, sizeof(Signal));
+      
+      while(radio.available()){
+        radio.read(&telemetry, sizeof(telemetry));
+        if(recieved == 0) firstPacket = telemetry.id;
+        recieved++;
       }
       if(millis() - start >= 1000){
-        Serial.print(sent);
-        Serial.print(" ");
-        Serial.print(received);
+        Serial.print(recieved);
         Serial.print("/");
-        Serial.println(telemetry.id - firstPacket);
-        received = 0;
-        sent = 0;
-        firstPacket = telemetry.id;
+        Serial.print(telemetry.id - firstPacket);
+        Serial.print("/");
+        Serial.println(telemetry.id);
+        recieved = 0;
         start = millis();
       }
       break;

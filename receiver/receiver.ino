@@ -64,8 +64,7 @@ void GetTelemetry()
 
 void setup()
 {
-  Serial.begin(115200);
-  Serial.println("Hello");
+  Serial.begin(9600);
   ch1.attach(0);
   ch2.attach(2);
   ch3.attach(3);
@@ -79,30 +78,28 @@ void setup()
   radio.begin();
   radio.openReadingPipe(1,pipeIn);
   radio.openWritingPipe(pipeOut);
-  radio.setChannel(76);
+  radio.setChannel(109);
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
   radio.setDataRate(RF24_250KBPS);
   radio.setPALevel(RF24_PA_MAX);
   radio.startListening();
-
+  Serial.println("hello");
 }
 
 unsigned long lastRecvTime = 0;
-uint16_t received;
+uint16_t recieved = 0;
 unsigned long measureStart = millis();
 
 void recvData()
-{  
-  // Reads all packets and keeps the latest
+{
   while ( radio.available() ) {
-    radio.read(&data, sizeof(Signal));    
-    received++;
+    GetTelemetry();
+    radio.writeAckPayload(1, &telemetry, sizeof(telemetry));
+    radio.read(&data, sizeof(Signal));
+    lastRecvTime = millis();
+    recieved++;
   }
-  lastRecvTime = millis();
-  // Gets telemetry data and loads into ack payload
-  GetTelemetry();
-  radio.writeAckPayload(1, &telemetry, sizeof(telemetry));
 }
 
 void loop()
@@ -111,15 +108,13 @@ void loop()
   
   unsigned long now = millis();
   if(now - measureStart >= 1000){
-    Serial.println(received);
+    Serial.println(recieved);
     measureStart = millis();
-    received = 0;
+    recieved = 0;
   }
   if ( now - lastRecvTime > 1000 ) {
     ResetData();
   }
-
-  // Process latest command
   ch_width_1 = map(data.roll, 0, 255, 1389, 1611);
   ch_width_2 = map(data.pitch, 0, 255, 1222, 1833);
   ch_width_3 = map(data.throttle, 0, 255, 1000, 2000);
