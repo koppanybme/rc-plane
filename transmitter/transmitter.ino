@@ -60,12 +60,11 @@ uint16_t ToMilliVolts(uint16_t adcValue){
   return (adcValue * 5000UL) >> 10;
 }
 
-uint16_t recieved = 0;
+uint16_t received = 0;
 unsigned long start = millis();
 uint16_t firstPacket;
 void setup(){
-  Serial.begin(9600);
-  while(!Serial){}
+  Serial.begin(9600);  
   radio.begin();
   radio.openWritingPipe(pipeOut);
   radio.openReadingPipe(1, pipeIn);
@@ -76,7 +75,7 @@ void setup(){
   radio.setPALevel(RF24_PA_MAX);
   radio.stopListening();
   ResetData();
-  recieved = 0;
+  received = 0;
   start = millis();
   lcd.begin(16, 2);
   lcd.print("hello");
@@ -125,8 +124,8 @@ void loop(){
       }
       data.roll = Border_Map( analogRead(A3) - rollOffset, 0, 512, 1023, true );
       data.pitch = Border_Map( analogRead(A2) - pitchOffset, 0, 512, 1023, true );      
-      data.throttle = Border_Map( analogRead(A1) - throttleOffset,570, 800, 1023, false );
-      data.yaw = Border_Map( analogRead(A0) - yawOffset, 0, 512, 1023, true );
+      data.throttle = Border_Map( analogRead(A1) - throttleOffset, 0, 512, 1023, false );
+      data.yaw = Border_Map( analogRead(A0) - yawOffset, 0, 512, 1023, false );
       data.aux1 = Border_Map( analogRead(A4), 0, 512, 1023, true );
       data.aux2 = Border_Map( analogRead(A5), 0, 512, 1023, true );
       data.aux3 = 0;
@@ -136,16 +135,22 @@ void loop(){
       
       while(radio.available()){
         radio.read(&telemetry, sizeof(telemetry));
-        if(recieved == 0) firstPacket = telemetry.id;
-        recieved++;
+        if(received == 0) firstPacket = telemetry.id;
+        received++;
       }
       if(millis() - start >= 1000){
-        Serial.print(recieved);
+        Serial.print(received);
         Serial.print("/");
         Serial.print(telemetry.id - firstPacket);
         Serial.print("/");
         Serial.println(telemetry.id);
-        recieved = 0;
+        lcd.clear();
+        lcd.print(ToMilliVolts(telemetry.bat));
+        lcd.print("mV");
+        lcd.setCursor(0, 1);
+        lcd.print(received);
+        lcd.print("/s");
+        received = 0;
         start = millis();
       }
       break;
@@ -162,6 +167,7 @@ void loop(){
         yawOffset = analogRead(A0);
         state = TRANSMIT;
       }
+      state = TRANSMIT;
       break;
     }
   }

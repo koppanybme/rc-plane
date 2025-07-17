@@ -64,7 +64,7 @@ void GetTelemetry()
 
 void setup()
 {
-  Serial.begin(9600);
+  //Serial.begin(9600);
   ch1.attach(0);
   ch2.attach(2);
   ch3.attach(3);
@@ -108,7 +108,7 @@ void loop()
   
   unsigned long now = millis();
   if(now - measureStart >= 1000){
-    Serial.println(recieved);
+    //Serial.println(recieved);
     measureStart = millis();
     recieved = 0;
   }
@@ -118,7 +118,7 @@ void loop()
   ch_width_1 = map(data.roll, 0, 255, 1389, 1611);
   ch_width_2 = map(data.pitch, 0, 255, 1222, 1833);
   ch_width_3 = map(data.throttle, 0, 255, 1000, 2000);
-  ch_width_4 = map(data.yaw, 0, 255, 1000, 2000);
+  ch_width_4 = map(data.yaw, 0, 255, 900, 2000);
   ch_width_5 = map(data.aux1, 0, 255, 1000, 2000);
   ch_width_6 = map(data.aux2, 0, 255, 1000, 2000);
   ch_width_7 = map(data.aux3, 0, 1, 1000, 2000);
