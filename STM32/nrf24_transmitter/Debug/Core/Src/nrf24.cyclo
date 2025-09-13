@@ -1,0 +1,8 @@
+../Core/Src/nrf24.c:22:20:NRF24_CE_H	1
+../Core/Src/nrf24.c:24:20:NRF24_CSN_H	1
+../Core/Src/nrf24.c:25:20:NRF24_CSN_L	1
+../Core/Src/nrf24.c:27:6:NRF24_WriteReg	1
+../Core/Src/nrf24.c:35:9:NRF24_ReadReg	1
+../Core/Src/nrf24.c:44:6:NRF24_Init	2
+../Core/Src/nrf24.c:63:6:NRF24_Transmit_IT	2
+../Core/Src/nrf24.c:84:9:NRF24_Receive_IT	3
