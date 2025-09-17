@@ -18,14 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "adc.h"
+#include "dma.h"
 #include "spi.h"
 #include "tim.h"
 #include "gpio.h"
-#include "nrf24.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "nrf24.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,6 +48,7 @@
 
 /* USER CODE BEGIN PV */
 static uint8_t txSerialized[32];
+volatile uint32_t adc_results[4];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -89,13 +91,19 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI2_Init();
   MX_TIM2_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_ADCEx_Calibration_Start(&hadc1);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_results, 4);
   NRF24_Init(0);
   uint8_t status = NRF24_ReadReg(NRF24_REG_STATUS);
   uint8_t ch = NRF24_ReadReg(NRF24_REG_RF_CH);
   HAL_TIM_Base_Start_IT(&htim2);
+  TIM2->CCR2 = 3900;	//Every ADC conversion starts 100us before transmitting
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -105,6 +113,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  volatile uint32_t ch0 = adc_results[0];
+	  volatile uint32_t ch1 = adc_results[1];
+	  volatile uint32_t ch2 = adc_results[2];
+	  volatile uint32_t ch3 = adc_results[3];
   }
   /* USER CODE END 3 */
 }
@@ -117,6 +129,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -146,6 +159,12 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /* USER CODE BEGIN 4 */
@@ -153,8 +172,26 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2) {
         // This runs at 250 Hz
+        uint32_t time = HAL_GetTick();
+        //Serialize time MSB first
+        txSerialized[0] = (time & 0xff000000) >> 24;
+        txSerialized[1] = (time & 0x00ff0000) >> 16;
+        txSerialized[2] = (time & 0x0000ff00) >> 8;
+        txSerialized[3] = (time & 0x000000ff) >> 0;
         NRF24_Transmit_IT(txSerialized, 32);
     }
+}
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+	//Serialize adc results MSB first
+	txSerialized[4] = adc_results[0] >> 8;
+	txSerialized[5] = adc_results[0] & 0xff;
+	txSerialized[6] = adc_results[1] >> 8;
+	txSerialized[7] = adc_results[1] & 0xff;
+	txSerialized[8] = adc_results[2] >> 8;
+	txSerialized[9] = adc_results[2] & 0xff;
+	txSerialized[10] = adc_results[3] >> 8;
+	txSerialized[11] = adc_results[3] & 0xff;
 }
 /* USER CODE END 4 */
 

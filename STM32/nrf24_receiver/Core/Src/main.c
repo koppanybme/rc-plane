@@ -21,11 +21,10 @@
 #include "spi.h"
 #include "tim.h"
 #include "gpio.h"
-#include "nrf24.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "nrf24.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,12 +46,14 @@
 
 /* USER CODE BEGIN PV */
 static uint8_t rxSerialized[32];
+static uint32_t time;
+static volatile uint32_t packets_received;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+uint16_t ComputePulseWidth(uint16_t adcVal, uint16_t min, uint16_t max);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -91,7 +92,16 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI2_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+  TIM3->CCR1 = 1500;
+  TIM3->CCR2 = 1500;
+  TIM3->CCR3 = 1500;
+  TIM3->CCR4 = 1500;
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
   NRF24_Init(1);
   uint8_t config = NRF24_ReadReg(NRF24_REG_CONFIG);
   uint8_t status = NRF24_ReadReg(NRF24_REG_STATUS);
@@ -99,7 +109,9 @@ int main(void)
   uint8_t pw = NRF24_ReadReg(NRF24_REG_RX_PW_P0);
   uint8_t addr[5];
   for(int i = 0; i<5; i++) addr[i] = NRF24_ReadReg(NRF24_REG_RX_ADDR_P0);
-  for(int i = 0; i<32; i++) rxSerialized[i] = 0x7E;
+  for(int i = 0; i<32; i++) rxSerialized[i] = 0xFF;
+  NRF24_WriteReg(NRF24_REG_STATUS, NRF24_RX_DR | NRF24_TX_DS | NRF24_MAX_RT);
+  NRF24_Receive_IT(rxSerialized);
   //HAL_TIM_Base_Start_IT(&htim2);
   /* USER CODE END 2 */
 
@@ -110,13 +122,16 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	volatile uint32_t time =
-			(rxSerialized[0] << 24) +
-			(rxSerialized[1] << 16) +
-			(rxSerialized[2] << 8)	+
-			(rxSerialized[3] << 0);
-	volatile uint8_t debug[32];
-	memcpy(debug, rxSerialized, 32);
+	  volatile uint32_t packets = packets_received;
+		//Control values deserialized MSB first
+		volatile uint16_t aileron_t = ((uint16_t)rxSerialized[4] << 8) + rxSerialized[5];
+		volatile uint16_t elevator_t = ((uint16_t)rxSerialized[6] << 8) + rxSerialized[7];
+		volatile uint16_t throttle_t = ((uint16_t)rxSerialized[8] << 8) + rxSerialized[9];
+		volatile uint16_t rudder_t = ((uint16_t)rxSerialized[10] << 8) + rxSerialized[11];
+		volatile uint32_t ccr1 = ComputePulseWidth(aileron_t, 500, 2500);
+		volatile uint32_t ccr2 = ComputePulseWidth(elevator_t, 500, 2500);
+		volatile uint32_t ccr3 = ComputePulseWidth(throttle_t, 500, 2500);
+		volatile uint32_t ccr4 = ComputePulseWidth(rudder_t, 500, 2500);
   }
   /* USER CODE END 3 */
 }
@@ -167,6 +182,21 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         // This runs at 250 Hz
     	if(hspi2.State == HAL_SPI_STATE_READY){
     		NRF24_Receive_IT(rxSerialized);
+    		//Time deserialized MSB first
+    		time =
+				(rxSerialized[0] << 24) +
+				(rxSerialized[1] << 16) +
+				(rxSerialized[2] << 8)	+
+				(rxSerialized[3] << 0);
+    		//Control values deserialized MSB first
+    		uint16_t aileron = ((uint16_t)rxSerialized[4] >> 8) + rxSerialized[5];
+    		uint16_t elevator = ((uint16_t)rxSerialized[6] >> 8) + rxSerialized[7];
+    		uint16_t throttle = ((uint16_t)rxSerialized[8] >> 8) + rxSerialized[9];
+    		uint16_t rudder = ((uint16_t)rxSerialized[10] >> 8) + rxSerialized[11];
+    		TIM3->CCR1 = ComputePulseWidth(aileron, 500, 2500);
+    		TIM3->CCR2 = ComputePulseWidth(elevator, 500, 2500);
+    		TIM3->CCR3 = ComputePulseWidth(throttle, 500, 2500);
+    		TIM3->CCR4 = ComputePulseWidth(rudder, 500, 2500);
     	}
     }
 }
@@ -174,7 +204,28 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     if (GPIO_Pin == NRF24_IRQ_Pin) {
         // NRF24 IRQ triggered (falling edge)
     	NRF24_Receive_IT(rxSerialized);
+    	packets_received++;
+		//Time deserialized MSB first
+		time =
+			(rxSerialized[0] << 24) +
+			(rxSerialized[1] << 16) +
+			(rxSerialized[2] << 8)	+
+			(rxSerialized[3] << 0);
+		//Control values deserialized MSB first
+		uint16_t aileron = ((uint16_t)rxSerialized[4] << 8) + rxSerialized[5];
+		uint16_t elevator = ((uint16_t)rxSerialized[6] << 8) + rxSerialized[7];
+		uint16_t throttle = ((uint16_t)rxSerialized[8] << 8) + rxSerialized[9];
+		uint16_t rudder = ((uint16_t)rxSerialized[10] << 8) + rxSerialized[11];
+		TIM3->CCR1 = ComputePulseWidth(aileron, 500, 2500);
+		TIM3->CCR2 = ComputePulseWidth(elevator, 500, 2500);
+		TIM3->CCR3 = ComputePulseWidth(throttle, 500, 2500);
+		TIM3->CCR4 = ComputePulseWidth(rudder, 500, 2500);
     }
+}
+uint16_t ComputePulseWidth(uint16_t adcVal, uint16_t min, uint16_t max){
+	if(min > max || adcVal > 4095) return 1500;
+	uint16_t pulse = (((uint32_t)adcVal * (max-min)) >> 12) + min;
+	return pulse;
 }
 /* USER CODE END 4 */
 

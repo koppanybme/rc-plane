@@ -5,4 +5,4 @@
 ../Core/Src/nrf24.c:35:9:NRF24_ReadReg	24	static
 ../Core/Src/nrf24.c:44:6:NRF24_Init	16	static
 ../Core/Src/nrf24.c:63:6:NRF24_Transmit_IT	24	static
-../Core/Src/nrf24.c:84:9:NRF24_Receive_IT	32	static
+../Core/Src/nrf24.c:79:9:NRF24_Receive_IT	32	static

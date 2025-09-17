@@ -69,11 +69,6 @@ void NRF24_Transmit_IT(uint8_t *data, uint8_t len) {
     // Prepare TX payload command
     spiTxBuf[0] = NRF24_CMD_W_TX_PAYLOAD_NOACK;
     for(uint8_t i=0; i<len; i++) spiTxBuf[i+1] = data[i];
-    uint32_t time = HAL_GetTick();
-    spiTxBuf[1] = (time & 0xff000000) >> 24;
-    spiTxBuf[2] = (time & 0x00ff0000) >> 16;
-    spiTxBuf[3] = (time & 0x0000ff00) >> 8;
-    spiTxBuf[4] = (time & 0x000000ff) >> 0;
 
     NRF24_CSN_L();
     HAL_SPI_Transmit(&hspi2, spiTxBuf, len+1, 10);
