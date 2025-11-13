@@ -36,7 +36,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define JOYSTICK_DEADZONE 25
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,12 +49,25 @@
 /* USER CODE BEGIN PV */
 static uint8_t txSerialized[32];
 volatile uint32_t adc_results[4];
+
+//Hardcoded values for now
+static uint16_t aileron_raw_min = 692;
+static uint16_t aileron_raw_middle = 2158;
+static uint16_t aileron_raw_max = 3562;
+static uint16_t elevator_raw_min = 276;
+static uint16_t elevator_raw_middle = 2047;
+static uint16_t elevator_raw_max = 3562;
+static uint16_t throttle_raw_min = 306;
+static uint16_t throttle_raw_max = 3368;
+static uint16_t rudder_raw_min = 581;
+static uint16_t rudder_raw_middle = 2045;
+static uint16_t rudder_raw_max = 3549;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+uint16_t mapChannel(uint16_t raw, uint16_t min, uint16_t middle, uint16_t max, uint8_t is_throttle, uint8_t is_reversed);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -104,6 +117,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim2);
   TIM2->CCR2 = 3900;	//Every ADC conversion starts 100us before transmitting
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -183,15 +197,46 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
+	uint16_t aileron = mapChannel(adc_results[0], aileron_raw_min, aileron_raw_middle, aileron_raw_max, 0, 0);
+	uint16_t elevator = mapChannel(adc_results[1], elevator_raw_min, elevator_raw_middle, elevator_raw_max, 0, 0);
+	uint16_t throttle = mapChannel(adc_results[2], throttle_raw_min, throttle_raw_min, throttle_raw_max, 1, 0);
+	uint16_t rudder = mapChannel(adc_results[3], rudder_raw_min, rudder_raw_middle, rudder_raw_max, 0, 0);
 	//Serialize adc results MSB first
-	txSerialized[4] = adc_results[0] >> 8;
-	txSerialized[5] = adc_results[0] & 0xff;
-	txSerialized[6] = adc_results[1] >> 8;
-	txSerialized[7] = adc_results[1] & 0xff;
-	txSerialized[8] = adc_results[2] >> 8;
-	txSerialized[9] = adc_results[2] & 0xff;
-	txSerialized[10] = adc_results[3] >> 8;
-	txSerialized[11] = adc_results[3] & 0xff;
+	txSerialized[4] = aileron >> 8;
+	txSerialized[5] = aileron & 0xff;
+	txSerialized[6] = elevator >> 8;
+	txSerialized[7] = elevator & 0xff;
+	txSerialized[8] = throttle >> 8;
+	txSerialized[9] = throttle & 0xff;
+	txSerialized[10] = rudder >> 8;
+	txSerialized[11] = rudder & 0xff;
+}
+uint16_t mapChannel(uint16_t raw, uint16_t min, uint16_t middle, uint16_t max, uint8_t is_throttle, uint8_t is_reversed){
+	if(min >= max || middle >= max) return 2048;
+	if (raw <= min) raw = min;
+	if (raw >= max) raw = max;
+	uint16_t normalized = 0;
+	if(is_throttle){
+		uint16_t range = max-min;
+		normalized = (uint32_t)(raw-min)*4095/range;
+	} else {
+		if(raw > middle-JOYSTICK_DEADZONE && raw <= middle+JOYSTICK_DEADZONE){
+			//If inside deadzone
+			return 2048;
+		} else if(raw <= middle-JOYSTICK_DEADZONE){
+			//Map linearly to lower half
+			uint16_t range = middle-min-JOYSTICK_DEADZONE;
+			normalized = (uint32_t)(raw-min)*2048/range;
+		} else{
+			//Map linearly to upper half
+			uint16_t range = max-middle-JOYSTICK_DEADZONE;
+			normalized = 2047+(uint32_t)(raw-middle-JOYSTICK_DEADZONE)*2048/range;
+		}
+	}
+	if(is_reversed){
+		normalized = 4095 - normalized;
+	}
+	return (uint16_t)normalized;
 }
 /* USER CODE END 4 */
 

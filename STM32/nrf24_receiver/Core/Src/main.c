@@ -47,6 +47,7 @@
 /* USER CODE BEGIN PV */
 static uint8_t rxSerialized[32];
 static uint32_t time;
+static uint32_t lastTick;
 static volatile uint32_t packets_received;
 /* USER CODE END PV */
 
@@ -96,7 +97,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   TIM3->CCR1 = 1500;
   TIM3->CCR2 = 1500;
-  TIM3->CCR3 = 1500;
+  TIM3->CCR3 = 0;
   TIM3->CCR4 = 1500;
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
@@ -112,7 +113,7 @@ int main(void)
   for(int i = 0; i<32; i++) rxSerialized[i] = 0xFF;
   NRF24_WriteReg(NRF24_REG_STATUS, NRF24_RX_DR | NRF24_TX_DS | NRF24_MAX_RT);
   NRF24_Receive_IT(rxSerialized);
-  //HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim3);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -178,21 +179,13 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    if (htim->Instance == TIM2) {
-        // This runs at 250 Hz
-    	if(hspi2.State == HAL_SPI_STATE_READY){
-    		NRF24_Receive_IT(rxSerialized);
-    		//Time deserialized MSB first
-    		time =
-				(rxSerialized[0] << 24) +
-				(rxSerialized[1] << 16) +
-				(rxSerialized[2] << 8)	+
-				(rxSerialized[3] << 0);
-    		//Control values deserialized MSB first
-    		uint16_t aileron = ((uint16_t)rxSerialized[4] >> 8) + rxSerialized[5];
-    		uint16_t elevator = ((uint16_t)rxSerialized[6] >> 8) + rxSerialized[7];
-    		uint16_t throttle = ((uint16_t)rxSerialized[8] >> 8) + rxSerialized[9];
-    		uint16_t rudder = ((uint16_t)rxSerialized[10] >> 8) + rxSerialized[11];
+    if (htim->Instance == TIM3) {
+        // If no new packets for 500ms, set control surfaces to middle, turn off throttle
+    	if(HAL_GetTick() - lastTick >= 500){
+    		uint16_t aileron = 2048;
+    		uint16_t elevator = 2048;
+    		uint16_t throttle = 0;
+    		uint16_t rudder = 2048;
     		TIM3->CCR1 = ComputePulseWidth(aileron, 500, 2500);
     		TIM3->CCR2 = ComputePulseWidth(elevator, 500, 2500);
     		TIM3->CCR3 = ComputePulseWidth(throttle, 500, 2500);
@@ -205,6 +198,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
         // NRF24 IRQ triggered (falling edge)
     	NRF24_Receive_IT(rxSerialized);
     	packets_received++;
+    	lastTick = HAL_GetTick();
 		//Time deserialized MSB first
 		time =
 			(rxSerialized[0] << 24) +
@@ -216,10 +210,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 		uint16_t elevator = ((uint16_t)rxSerialized[6] << 8) + rxSerialized[7];
 		uint16_t throttle = ((uint16_t)rxSerialized[8] << 8) + rxSerialized[9];
 		uint16_t rudder = ((uint16_t)rxSerialized[10] << 8) + rxSerialized[11];
-		TIM3->CCR1 = ComputePulseWidth(aileron, 500, 2500);
-		TIM3->CCR2 = ComputePulseWidth(elevator, 500, 2500);
-		TIM3->CCR3 = ComputePulseWidth(throttle, 500, 2500);
-		TIM3->CCR4 = ComputePulseWidth(rudder, 500, 2500);
+		TIM3->CCR1 = ComputePulseWidth(aileron, 1300, 1700);
+		TIM3->CCR2 = ComputePulseWidth(elevator, 1100, 1900);
+		TIM3->CCR3 = ComputePulseWidth(throttle, 1100, 1940);
+		TIM3->CCR4 = ComputePulseWidth(rudder, 1100, 1900);
     }
 }
 uint16_t ComputePulseWidth(uint16_t adcVal, uint16_t min, uint16_t max){
