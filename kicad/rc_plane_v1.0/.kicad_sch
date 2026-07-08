@@ -1,0 +1,47 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "05b4a9f3-0474-4e37-a888-9407bf9f1e5a")
+	(paper "A4")
+	(lib_symbols)
+	(sheet
+		(at 0 0)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "a8c237e7-6389-4f4a-a0f2-9b3f8fccd4ec")
+		(property "Sheetname" "rc_plane_v1.0"
+			(at 0 -0.7116 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "rc_plane_v1.0.kicad_sch"
+			(at 0 4.3946 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+	)
+)
