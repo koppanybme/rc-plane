@@ -11,5 +11,5 @@ v0.1 STM32F103 migration (source code available)
 only control implemented, no telemetry
 
 v1.0 STM32G474 SX1262 (CAD files available)
-board bringup succesful
+board bringup successful
 firmware under developement
